@@ -1,489 +1,196 @@
 #! python3
 
-import xml.etree.ElementTree as ET
-from xml.parsers import expat
-import os, sys, re, argparse
+import argparse
+import xliff
+import os
+from gooey import Gooey
 
-# Setup XLIFF name space
-NSMAP = {'mw': 'urn:oasis:names:tc:xliff:document:1.2' }
-ET.register_namespace('', 'urn:oasis:names:tc:xliff:document:1.2')
 
-# TODO: Define global log file
-# TODO: Clean up temp files that get created
+def log_string(logfile, s):
+    print(s)
+    log = open(logfile, 'a', encoding="utf-8")
+    log.write(s + '\n')
+    log.close()
 
-class Xliff:
-    # TODO: Clean up init function
-    def __init__(self, xliffPath):
-        # Check if file exists
-        if not os.path.exists(xliffPath):
-            # TODO: Raise Exception
-            return
-        if not (xliffPath.lower().endswith('.xliff')):
-            print("The given file is not an xliff file")
-            # TODO: Raise exceptions
-        self.path = xliffPath
-        self.tree, self.root = self.getTreeRoot(xliffPath)
-        self.transArray = self.xliffToArray()
 
-    def getTreeRoot(self,xliffFile):
-        tree = ET.parse(xliffFile, ET.XMLParser(encoding='utf-8'))
-        root = tree.getroot()
+def find_missing_translations(args):
+    _find_missing_translations(args.xliff)
 
-        if root == None:
-            print('Could not successfully parse %s.' % (xliffFile))
-        return (tree, root)
 
-    def clean(self):
-        print("Opening xliff file...\n\n")
-        file = open(self.path, "r+", encoding="utf8")
-
-        removedMrkText = re.sub(r"<[/]{0,1}mrk[\s\S]*?>", "", file.read())
-        removedSegSourceText = re.sub(r"<seg-source>[\s\S]*?</seg-source>", "", removedMrkText)
-
-        file.write(removedSegSourceText)
-
-        file.close()
-
-    def xliffToArray(self):
-        translations = []
-        for transUnit in self.root.findall('.//mw:trans-unit', namespaces=NSMAP):
-            ident = transUnit.get('id')
-            sourceString = transUnit.find('.//mw:source', namespaces=NSMAP)
-            targetString = transUnit.find('.//mw:target', namespaces=NSMAP)
-
-            if (ident!= None and sourceString != None and targetString != None):
-                translations.append((ident, sourceString.text, targetString.text))
-
-        return translations
-
-    def xliffToExcel(self, targetPath):
+def _find_missing_translations(path):
+    if not os.path.isdir(path) and not os.path.isfile(path):
+        logfile = path + "_find_missing_translatations_log.txt"
+        log_string(logfile, "{} does not exist or could not be found".format(path))
         return
 
+    if os.path.isdir(path):
+        for file in os.listdir(path):
+            if file.endswith('.xliff'):
+                file = os.path.join(path, file)
+                logfile = os.path.splitext(file)[0] + "_find_missing_translations_log.txt"
+                log_string(logfile, 'Cleaning xliff file...')
+                xliff.clean_xliff(file)
 
+                _, root = xliff.get_tree_root(file)
+                transarray = xliff.root_to_array(root)
 
+                log_string(logfile, '{} translations found in xliff'.format(len(transarray)))
 
-# TODO: Remove old way of doing things
-
-def getXliffTreeRoot(xliffFile):
-    tree = ET.parse(xliffFile, ET.XMLParser(encoding='utf-8'))
-    root = tree.getroot()
-
-    if root == None:
-        print('Could not successfully parse %s.' % (xliffFile))
-    return (tree, root)
-
-def cleanXliff(args):
-    cleanedXliff = _cleanXliff(args.xliff)
-    return cleanedXliff
-
-def _cleanXliff(xliffFile):
-    # TODO: Implement cleaning logic
-    return
-
-def removeTargetStrings(args):
-    _removeTargetStrings(args.xliff)
-    return
-
-def _removeTargetStrings(xliffFile):
-    print("In _removeTargetStrings")
-    xliffFile = xliffFile
-
-    # Create Log file
-    logFile = open(os.path.splitext(xliffFile)[0] + "_log.txt", 'w')
-
-    # Check if file exists
-    if os.path.exists(xliffFile):
-
-        # Check if file is an xliff
-        if not (xliffFile.lower().endswith('.xliff')):
-            print("The given file is not an xliff file")
-            logFile.write("The given file is not an xliff file: %s\n\n" % xliffFile)
-            sys.exit()
-
-        # Open xliff
-        logFile.write("Opening xliff file...\n\n")
-        file = open(xliffFile, "r", encoding="utf8")
-
-        # Cleanup and create temp
-        outputfile = open(os.path.splitext(xliffFile)[0] + "_updated.xliff", "w", encoding="utf8")
-        logFile.write("Cleaning up %s and storing the results in %s\n\n" % (xliffFile, outputfile))
-
-        removedMrkText = re.sub(r"<[/]{0,1}mrk[\s\S]*?>", "", file.read())
-        removedSegSourceText = re.sub(r"<seg-source>[\s\S]*?</seg-source>", "", removedMrkText)
-
-        outputfile.write(removedSegSourceText)
-
-        file.close()
-        outputfile.close()
-
-        # Load and parse xliff
-        logFile.write("Loading and parsing temp xliff file\n\n")
-        transTree, transRoot = getXliffTreeRoot(os.path.splitext(xliffFile)[0] + "_updated.xliff")
-        transLen = len(transRoot.findall('.//mw:trans-unit', namespaces=NSMAP))
-        logFile.write('%s translations present in the xliff\n\n' % (transLen))
-
-        # Find all missing translation
-        for transUnit in transRoot.findall('.//mw:trans-unit', namespaces=NSMAP):
-            ident = transUnit.get('id')
-            sourceString = transUnit.find('.//mw:source', namespaces=NSMAP)
-            targetString = transUnit.find('.//mw:target', namespaces=NSMAP)
-
-            if sourceString == None:
-                logFile.write('Source tag does not exist for trans-unit id: %s\n\n' % (ident))
-                continue
-            if sourceString.text == None:
-                logFile.write('Could not find source string for trans-unit id: %s\n\n' % (ident))
-                continue
-            if targetString == None:
-                logFile.write('Could not find translation tag for trans-unit id: %s\nsource string: %s\n\n' % (
-                    ident, sourceString.text))
-                continue
-            if targetString.text == None:
-                logFile.write('Could not find translation string for trans-unit id: %s\n\n' % (
-                    ident))
-                continue
-            if targetString.text == sourceString.text:
-                targetString.text = ''
-
-        # Delete the temp file
-        logFile.write("Deleting temp file: %s" % (os.path.splitext(xliffFile)[0] + "_updated.xliff"))
-        os.unlink(os.path.splitext(xliffFile)[0] + "_updated.xliff")
-
-        # Save the output
-        transTree.write(os.path.splitext(xliffFile)[0] + "_updated.xliff", encoding="utf8")
-    else:
-        print("Given xliff file does not exist")
-        logFile.write("The given xliff file does not exist: %s" % xliffFile)
+                missingtrans = xliff.find_missing_translations(transarray)
 
-    # Close the log file
-    logFile.close()
-
-def addTargetStrings(args):
-    _addTargetStrings(args.xliff)
-    return
+                log_string(logfile, '{} missing translations found in xliff'.format(len(missingtrans)))
+                for trans in missingtrans:
+                    log_string(logfile, str(trans))
 
-def _addTargetStrings(xliffFile):
-    print("In _addTargetStrings")
-    xliffFile = xliffFile
+    elif os.path.isfile(path):
+        file = path
 
-    # Create Log file
-    logFile = open(os.path.splitext(xliffFile)[0] + "_log.txt", 'w')
+        logfile = os.path.splitext(file)[0] + "_find_missing_translations_log.txt"
 
-    # Check if file exists
-    if os.path.exists(xliffFile):
+        if not file.lower().endswith('.xliff'):
+            log_string(logfile, '{} is not an xliff file'.format(file))
+            return
 
-        # Check if file is an xliff
-        if not (xliffFile.lower().endswith('.xliff')):
-            print("The given file is not an xliff file")
-            logFile.write("The given file is not an xliff file: %s\n\n" % xliffFile)
-            sys.exit()
+        log_string(logfile, 'Cleaning xliff file...')
+        xliff.clean_xliff(file)
 
-        # Open xliff
-        logFile.write("Opening xliff file...\n\n")
-        file = open(xliffFile, "r", encoding="utf8")
+        _, root = xliff.get_tree_root(file)
+        transarray = xliff.root_to_array(root)
 
-        # Cleanup and create temp
-        outputfile = open(os.path.splitext(xliffFile)[0] + "_updated.xliff", "w", encoding="utf8")
-        logFile.write("Cleaning up %s and storing the results in %s\n\n" % (xliffFile, outputfile))
+        log_string(logfile, '{} translations found in xliff'.format(len(transarray)))
 
-        removedMrkText = re.sub(r"<[/]{0,1}mrk[\s\S]*?>", "", file.read())
-        removedSegSourceText = re.sub(r"<seg-source>[\s\S]*?</seg-source>", "", removedMrkText)
-
-        outputfile.write(removedSegSourceText)
+        missingtrans = xliff.find_missing_translations(transarray)
 
-        file.close()
-        outputfile.close()
+        log_string(logfile, '{} missing translations found in xliff'.format(len(missingtrans)))
+        for trans in missingtrans:
+            log_string(logfile, str(trans))
 
-        # Load and parse xliff
-        logFile.write("Loading and parsing temp xliff file\n\n")
-        transTree, transRoot = getXliffTreeRoot(os.path.splitext(xliffFile)[0] + "_updated.xliff")
-        transLen = len(transRoot.findall('.//mw:trans-unit', namespaces=NSMAP))
-        logFile.write('%s translations present in the xliff\n\n' % (transLen))
-
-        # Find all missing translation
-        for transUnit in transRoot.findall('.//mw:trans-unit', namespaces=NSMAP):
-            ident = transUnit.get('id')
-            sourceString = transUnit.find('.//mw:source', namespaces=NSMAP)
-            targetString = transUnit.find('.//mw:target', namespaces=NSMAP)
-
-            if sourceString == None:
-                logFile.write('Source tag does not exist for trans-unit id: %s\n\n' % (ident))
-                continue
-            if sourceString.text == None:
-                logFile.write('Could not find source string for trans-unit id: %s\n\n' % (ident))
-                continue
-            if targetString == None:
-                logFile.write('Could not find translation tag for trans-unit id: %s\nsource string: %s\n\n' % (
-                    ident, sourceString.text))
-                continue
-            if targetString.text == None:
-                targetString.text = sourceString.text
-
-        # Delete the temp file
-        logFile.write("Deleting temp file: %s" % (os.path.splitext(xliffFile)[0] + "_updated.xliff"))
-        os.unlink(os.path.splitext(xliffFile)[0] + "_updated.xliff")
-
-        # Save the output
-        transTree.write(os.path.splitext(xliffFile)[0] + "_updated.xliff", encoding="utf8")
-    else:
-        print("Given xliff file does not exist")
-        logFile.write("The given xliff file does not exist: %s" % xliffFile)
-
-    # Close the log file
-    logFile.close()
-
-def findDuplicates(args):
-    _findDuplicates(args.xliff)
-
-def _findDuplicates(xliffFile):
-    print("in _findDeuplicates")
-
-    # Create Log file
-    logFile = open(os.path.splitext(xliffFile)[0] + "_duplicates_log.txt", 'w')
-
-
-
-
-def findMissingTranslations(args):
-    print("In findMissingTranslations")
-    xliffFile = args.xliff
-
-    # Create Log file
-    logFile = open(os.path.splitext(xliffFile)[0] + "_log.txt", 'w')
-
-    # Check if file exists
-    if os.path.exists(xliffFile):
-
-        # # Check if file is an xliff
-        # if not (xliffFile.lower().endswith('.xliff')):
-        #     print("The given file is not an xliff file")
-        #     logFile.write("The given file is not an xliff file: %s\n\n" % xliffFile)
-        #     sys.exit()
-
-        # Open xliff
-        logFile.write("Opening xliff file...\n\n")
-        file = open(xliffFile, "r", encoding="utf-8")
-
-        # Cleanup and create temp
-        outputfile = open(os.path.splitext(xliffFile)[0] + "_updated.xliff", "w", encoding="utf-8")
-        logFile.write("Cleaning up %s and storing the results in %s\n\n" % (xliffFile, outputfile))
-
-        removedMrkText = re.sub(r"<[/]{0,1}mrk[\s\S]*?>", "", file.read())
-        removedSegSourceText = re.sub(r"<seg-source>[\s\S]*?</seg-source>", "", removedMrkText)
-
-        outputfile.write(removedSegSourceText)
-
-        file.close()
-        outputfile.close()
-
-        # Load and parse xliff
-        logFile.write("Loading and parsing temp xliff file\n\n")
-        transTree, transRoot = getXliffTreeRoot(os.path.splitext(xliffFile)[0] + "_updated.xliff")
-        transLen = len(transRoot.findall('.//mw:trans-unit', namespaces=NSMAP))
-        logFile.write('%s translations present in the xliff\n\n' % (transLen))
-
-        translationList = []
-        # Find all missing translation
-        for transUnit in transRoot.findall('.//mw:trans-unit', namespaces=NSMAP):
-            ident = transUnit.get('id')
-            sourceString = transUnit.find('.//mw:source', namespaces=NSMAP)
-            targetString = transUnit.find('.//mw:target', namespaces=NSMAP)
-
-
-            if sourceString == None:
-                logFile.write('Source tag does not exist for trans-unit id: %s\n\n' % (ident))
-                continue
-            if sourceString.text == None:
-                logFile.write('Could not find source string for trans-unit id: %s\n\n' % (ident))
-                continue
-            if sourceString.text in translationList:
-                print('DUPLICATE SOURCE STRING')
-            if targetString == None:
-                logFile.write('Could not find translation tag for trans-unit id: %s\nsource string: %s\n\n' % (
-                ident, sourceString.text))
-                continue
-            if targetString.text == None:
-                logFile.write('Could not find translation for trans-unit id: %s\nsource string: %s\n\n' % (
-                ident, sourceString.text))
-                continue
-
-            translationList.append((ident, sourceString.text, targetString.text))
-
-        # Delete the temp file
-        logFile.write("Deleting temp file: %s" % (os.path.splitext(xliffFile)[0] + "_updated.xliff"))
-        os.unlink(os.path.splitext(xliffFile)[0] + "_updated.xliff")
-    else:
-        print("Given xliff file does not exist")
-        logFile.write("The given xliff file does not exist: %s" % xliffFile)
-
-    # Close the log file
-    logFile.close()
-
-def mergeXliffs(args):
-    print("In mergeXliffs")
-    transSource = args.transSource
-    canfieldTarget = args.canfieldTarget
-    xliffs = [transSource, canfieldTarget]
-
-    # Create Log file
-
-    logFile = open(os.path.splitext(canfieldTarget)[0] + "_log.txt", 'w')
-
-    # Verify that both files exist and are xliffs
-    #
-    # for xliff in xliffs:
-    #     # Check is file exists
-    #     if os.path.exists(xliff):
-    #         # Check if file is an xliff
-    #         if not ((xliff.lower().endswith('.xliff')) or xliff.lower().endswith('.sdlxliff') or xliff.lower().endwith('.xlf')):
-    #             print("The given file is not an xliff file")
-    #             logFile.write("The given file is not an xliff file: %s\n\n" % xliff)
-    #             sys.exit()
-    #     else:
-    #         print("Given xliff file does not exist")
-    #         logFile.write("The given xliff file does not exist: %s" % xliff)
-    #         sys.exit()
-
-    # Clean up and create temp for trans file
-
-    # Open source xliff
-    logFile.write("Opening xliff file...\n\n")
-    sourceFile = open(transSource, "r", encoding="utf8")
-
-    # cleanup and create temp
-    sourceTemp = open(os.path.splitext(transSource)[0] + "_temp.xliff", "w", encoding="utf8")
-    logFile.write("Cleaning up %s and storing the results in %s\n\n" % (transSource, sourceTemp))
-
-    removedMrkText = re.sub(r"<[/]{0,1}mrk[\s\S]*?>", "", sourceFile.read())
-    removedSegSourceText = re.sub(r"<seg-source>[\s\S]*?</seg-source>", "", removedMrkText)
-
-    sourceTemp.write(removedSegSourceText)
-
-    sourceFile.close()
-    sourceTemp.close()
-
-    # Parse xliff files
-
-    logFile.write("Loading and parsing xliff files\n\n")
-    transTree, transRoot = getXliffTreeRoot(os.path.splitext(transSource)[0] + "_temp.xliff")
-    targetTree, targetRoot = getXliffTreeRoot(os.path.splitext(canfieldTarget)[0] + ".xliff")
-
-
-    # Get list of translations in the source
-
-    translationList = []
-    for transUnit in transRoot.findall('.//mw:trans-unit', namespaces=NSMAP):
-        ident = transUnit.get('id')
-        sourceString = transUnit.find('.//mw:source', namespaces=NSMAP)
-        targetString = transUnit.find('.//mw:target', namespaces=NSMAP)
-
-        if sourceString == None:
-            logFile.write('Source tag does not exist for trans-unit id: %s\n\n' % (ident))
-            continue
-        if sourceString.text == None:
-            logFile.write('Could not find source string for trans-unit id: %s\n\n' % (ident))
-            continue
-        if targetString == None:
-            logFile.write('Could not find translation tag for trans-unit id: %s\nsource string: %s\n\n' % (
-                ident, sourceString.text))
-            continue
-        if targetString.text == None:
-            logFile.write('Could not find translation for trans-unit id: %s\nsource string: %s\n\n' % (
-                ident, sourceString.text))
-            continue
-
-        translationList.append([ident, sourceString.text, targetString.text])
-
-    #  Merge files
-    #print(translationList)
-
-    for transUnit in targetRoot.findall('.//mw:trans-unit', namespaces=NSMAP):
-        ident = transUnit.get('id')
-        transNode = [transNode for transNode in translationList if ident in transNode]
-
-        if len(transNode) > 0:
-            target = transUnit.find('.//mw:target', namespaces=NSMAP)
-            if target != None:
-                target.text = transNode[0][2]
-
-    # Save the output
-    targetTree.write(os.path.splitext(canfieldTarget)[0] + "_merged.xliff", encoding="utf8")
-
-
-def createTranslationFile(source, target):
-    # TODO: Check if file is an xliff
-    # TODO: Open xliff
-    # TODO: Cleanup and create temp
-    # TODO: Find Missing Translations
-
-    return
-
-def makeStringsFiles(source):
-    return
 
+def clean_xliff(args):
+    _clean_xliff(args.xliff)
+
+
+def _clean_xliff(file):
+    logfile = os.path.splitext(file)[0] + "_clean_xliff_log.txt"
+
+    if not os.path.isfile(file):
+        log_string(logfile, '{} does not exist or could not be found'.format(file))
+        return
+    if not file.lower().endswith('.xliff'):
+        log_string(logfile, '{} is not an xliff file'.format(file))
+        return
+
+    log_string(logfile, 'Attempting to clean {}...'.format(file))
+    xliff.clean_xliff(file)
+
+
+def populate(args):
+    _populate(args.xliff)
+
+
+def _populate(file):
+    xliff.clean_xliff(file)
+    xliff.populate_empty_target(file)
+
+
+def depopulate(args):
+    _depopulate(args.xliff)
+
+
+def _depopulate(file):
+    xliff.clean_xliff(file)
+    xliff.depopulate_empty_target(file)
+
+
+def verify_placeholders(args):
+    _verify_placeholders(args.xliff)
+
+
+def _verify_placeholders(file):
+    logfile = os.path.splitext(file)[0] + "_verify_placeholders_log.txt"
+
+    if not os.path.isfile(file):
+        log_string(logfile, '{} does not exist or could not be found'.format(file))
+        return
+    if not file.lower().endswith('.xliff'):
+        log_string(logfile, '{} is not an xliff file'.format(file))
+        return
+
+    log_string(logfile, 'Verify placeholders in {}'.format(file))
+    diffarray = xliff.verify_placeholder(file)
+    if not diffarray:
+        log_string(logfile, 'All placeholders in {} match!'.format(file))
+        return
+
+    log_string(logfile, 'Inconsistent placeholders in the following idents: ')
+    for diff in diffarray:
+        log_string(logfile, str(diff))
+
+
+@Gooey
 def main():
     # create top level parser
     parser = argparse.ArgumentParser()
     subparsers = parser.add_subparsers(help='Help for subcommands')
 
     # create the parser for findMissingTranslations command
-    parser_fMT = subparsers.add_parser('findMissingTranslations',
-                                       help='Finds all nodes where the target child exists and is empty. Outputs to a local log folder')
-    parser_fMT.add_argument('--xliff',
+    parser_fmt = subparsers.add_parser('findMissingTranslations',
+                                       help='Finds all nodes where the target child exists and is empty.'
+                                            ' Outputs to a local log folder')
+    parser_fmt.add_argument('--xliff',
                             action="store",
                             dest="xliff",
                             type=str,
                             help="Path to xliff file")
-    parser_fMT.set_defaults(func=findMissingTranslations)
-
-    # create the parser for mergeXliffs command
-    parser_merge = subparsers.add_parser('mergeXliffs',
-                                         help="Merges xliff provided by translators into Canfield xliff file")
-    parser_merge.add_argument('--transSource',
-                              action="store",
-                              dest="transSource",
-                              type=str,
-                              help="Path to xliff file provided by translators")
-    parser_merge.add_argument('--canfieldTarget',
-                              action="store",
-                              dest="canfieldTarget",
-                              type=str,
-                              help="Path to Canfield xliff life file that new translations will be merged into")
-    parser_merge.set_defaults(func=mergeXliffs)
+    parser_fmt.set_defaults(func=find_missing_translations)
 
     # create the parser for cleanXliff command
     parser_clean = subparsers.add_parser('cleanXliff',
-                                         help='Clean up unnecessary tags that are created as the result of translation software')
+                                         help='Clean up unnecessary tags that are created as '
+                                              'the result of translation software')
     parser_clean.add_argument('--xliff',
-                            action="store",
-                            dest="xliff",
-                            type=str,
-                            help="Path to xliff file")
-    parser_clean.set_defaults(func=cleanXliff)
+                              action="store",
+                              dest="xliff",
+                              type=str,
+                              help="Path to xliff file")
+    parser_clean.set_defaults(func=clean_xliff)
 
     # create the parser for addTargetStrings
     parser_add = subparsers.add_parser('addTargetStrings',
-                                       help='Finds all missing translations and sets the target string to source string')
+                                       help='Finds all missing translations '
+                                            'and sets the target string to source string')
     parser_add.add_argument('--xliff',
                             action="store",
                             dest="xliff",
                             type=str,
                             help="Path to xliff file")
-    parser_add.set_defaults(func=addTargetStrings)
+    parser_add.set_defaults(func=populate)
 
     # create the parser for removeTargetStrings
     parser_remove = subparsers.add_parser('removeTargetStrings',
-                                          help = 'Finds all target strings that match its source string and clears out the target string')
+                                          help='Finds all target strings that match its source string '
+                                               'and clears out the target string')
     parser_remove.add_argument('--xliff',
-                            action="store",
-                            dest="xliff",
-                            type=str,
-                            help="Path to xliff file")
-    parser_remove.set_defaults(func=removeTargetStrings)
+                               action="store",
+                               dest="xliff",
+                               type=str,
+                               help="Path to xliff file")
+    parser_remove.set_defaults(func=depopulate)
+
+    # create the parse for verifyPlaceholders
+    parser_verify = subparsers.add_parser('verifyPlaceholders',
+                                          help='Verifies the placeholder strings')
+    parser_verify.add_argument('--xliff',
+                               action="store",
+                               dest="xliff",
+                               type=str,
+                               help="Path to xliff file")
+    parser_verify.set_defaults(func=verify_placeholders)
 
     # parse arguments
     args = parser.parse_args()
     args.func(args)
+
 
 if __name__ == "__main__":
     main()
